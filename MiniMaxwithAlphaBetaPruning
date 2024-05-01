@@ -1,0 +1,214 @@
+import numpy as np
+import time
+# Define the board dimensions
+ROW_COUNT = 6
+COLUMN_COUNT = 7
+
+# Function to create the initial game board
+def create_board():
+    return np.zeros((ROW_COUNT, COLUMN_COUNT))
+
+# Function to drop a piece into the board
+def drop_piece(board, row, col, piece):
+    board[row][col] = piece
+
+# Function to check if a column is valid for placing a piece
+def is_valid_location(board, col):
+    return board[ROW_COUNT - 1][col] == 0
+
+# Function to get the next available row in a column
+def get_next_open_row(board, col):
+    for r in range(ROW_COUNT):
+        if board[r][col] == 0:
+            return r
+
+# Function to print the game board
+def print_board(board):
+    print(np.flip(board, 0))
+
+# Function to check if a player has won the game
+def winning_move(board, piece):
+    # Check horizontal locations
+    for c in range(COLUMN_COUNT - 3):
+        for r in range(ROW_COUNT):
+            if board[r][c] == piece and board[r][c+1] == piece and board[r][c+2] == piece and board[r][c+3] == piece:
+                return True
+
+    # Check vertical locations
+    for c in range(COLUMN_COUNT):
+        for r in range(ROW_COUNT - 3):
+            if board[r][c] == piece and board[r+1][c] == piece and board[r+2][c] == piece and board[r+3][c] == piece:
+                return True
+
+    # Check positively sloped diagonals
+    for c in range(COLUMN_COUNT - 3):
+        for r in range(ROW_COUNT - 3):
+            if board[r][c] == piece and board[r+1][c+1] == piece and board[r+2][c+2] == piece and board[r+3][c+3] == piece:
+                return True
+
+    # Check negatively sloped diagonals
+    for c in range(COLUMN_COUNT - 3):
+        for r in range(3, ROW_COUNT):
+            if board[r][c] == piece and board[r-1][c+1] == piece and board[r-2][c+2] == piece and board[r-3][c+3] == piece:
+                return True
+
+# Function to evaluate the board for the AI player
+def evaluate_window(window, piece):
+    score = 0
+    opponent_piece = 1 if piece == 2 else 2
+
+    if window.count(piece) == 4:
+        score += 100
+    elif window.count(piece) == 3 and window.count(0) == 1:
+        score += 5
+    elif window.count(piece) == 2 and window.count(0) == 2:
+        score += 2
+
+    if window.count(opponent_piece) == 3 and window.count(0) == 1:
+        score -= 4
+
+    return score
+
+# Function to score the entire board for the AI player
+def score_position(board, piece):
+    score = 0
+
+    # Score center column
+    center_array = [int(i) for i in list(board[:, COLUMN_COUNT // 2])]
+    center_count = center_array.count(piece)
+    score += center_count * 3
+
+    # Score horizontal
+    for r in range(ROW_COUNT):
+        row_array = [int(i) for i in list(board[r,:])]
+        for c in range(COLUMN_COUNT - 3):
+            window = row_array[c:c+4]
+            score += evaluate_window(window, piece)
+
+    # Score vertical
+    for c in range(COLUMN_COUNT):
+        col_array = [int(i) for i in list(board[:,c])]
+        for r in range(ROW_COUNT - 3):
+            window = col_array[r:r+4]
+            score += evaluate_window(window, piece)
+
+    # Score positively sloped diagonal
+    for r in range(ROW_COUNT - 3):
+        for c in range(COLUMN_COUNT - 3):
+            window = [board[r+i][c+i] for i in range(4)]
+            score += evaluate_window(window, piece)
+
+    # Score negatively sloped diagonal
+    for r in range(ROW_COUNT - 3):
+        for c in range(COLUMN_COUNT - 3):
+            window = [board[r+3-i][c+i] for i in range(4)]
+            score += evaluate_window(window, piece)
+
+    return score
+
+# Function to find the best move for the AI player using the Minimax algorithm with alpha-beta pruning
+def get_best_move(board, piece,nodes_per_depth):
+    valid_locations = [col for col in range(COLUMN_COUNT) if is_valid_location(board, col)]
+    best_score = -10000
+    best_col = valid_locations[0]
+    alpha = -10000
+    beta = 10000
+    for col in valid_locations:
+        row = get_next_open_row(board, col)
+        temp_board = board.copy()
+        drop_piece(temp_board, row, col, piece)
+        score = minimax(temp_board, 4, False, piece, alpha, beta,nodes_per_depth)
+        if score > best_score:
+            best_score = score
+            best_col = col
+        alpha = max(alpha, best_score)
+    return best_col
+
+# Minimax algorithm with alpha-beta pruning
+def minimax(board, depth, maximizingPlayer, piece, alpha, beta,nodes_per_depth):
+    valid_locations = [col for col in range(COLUMN_COUNT) if is_valid_location(board, col)]
+    nodes_per_depth[depth] += len(valid_locations)
+    is_terminal = winning_move(board, 1) or winning_move(board, 2) or len(valid_locations) == 0
+    if depth == 0 or is_terminal:
+        if is_terminal:
+            if winning_move(board, 2):
+                return 100000
+            elif winning_move(board, 1):
+                return -100000
+            else:
+                return 0
+        else:
+            return score_position(board, piece)
+    
+    if maximizingPlayer:
+        value = -10000
+        for col in valid_locations:
+            row = get_next_open_row(board, col)
+            temp_board = board.copy()
+            drop_piece(temp_board, row, col, piece)
+            value = max(value, minimax(temp_board, depth-1, False, piece, alpha, beta,nodes_per_depth))
+            alpha = max(alpha, value)
+            if alpha >= beta:
+                break
+        return value
+    else:
+        value = 10000
+        for col in valid_locations:
+            row = get_next_open_row(board, col)
+            temp_board = board.copy()
+            drop_piece(temp_board, row, col, 3 - piece)
+            value = min(value, minimax(temp_board, depth-1, True, piece, alpha, beta,nodes_per_depth))
+            beta = min(beta, value)
+            if beta <= alpha:
+                break
+        return value
+
+# Main game loop
+def main():
+    board = create_board()
+    print_board(board)
+    game_over = False
+    turn = 0
+    total_time=[]
+    nodes_per_depth=[0] * 5
+    
+    while not game_over:
+        # Player 1 input
+        if turn == 0:
+            col = int(input("Player 1 make your selection (0-6):"))
+            if is_valid_location(board, col):
+                row = get_next_open_row(board, col)
+                drop_piece(board, row, col, 1)
+
+                if winning_move(board, 1):
+                    print("Player 1 wins!")
+                    print('Average Time per minimax: ',np.mean(total_time))
+                    print("Nodes per Depth: ", nodes_per_depth)
+                    game_over = True
+        # Player 2 input
+        else:
+            start_time = time.time()
+            col = get_best_move(board, 2,nodes_per_depth)
+            end_time = time.time()
+            total_time.append(end_time-start_time)
+            print("Time Taken this turn: ", end_time-start_time)
+            
+            if is_valid_location(board, col):
+                row = get_next_open_row(board, col)
+                drop_piece(board, row, col, 2)
+
+                if winning_move(board, 2):
+                    print("Player 2 wins!")
+                    print('Average Time per minimax: ',np.mean(total_time))
+                    print("Nodes per Depth: ", nodes_per_depth)
+                    game_over = True
+
+        print_board(board)
+        turn += 1
+        turn %= 2
+
+        if game_over:
+            print("Game Over")
+
+if __name__ == '__main__':
+    main()
